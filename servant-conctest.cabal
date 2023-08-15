@@ -1,0 +1,41 @@
+cabal-version:       >=1.10
+name:                servant-conctest
+version:             0.1.2
+synopsis:            Concurrency tester for servant servers
+description:         Concurrent race detector and linearizability tester for servant servers
+category:            TODO
+homepage:            https://github.com/plow-technologies/servant-conctest.git#readme
+bug-reports:         https://github.com/plow-technologies/servant-conctest.git/issues
+copyright:           Plow-Technologies LLC
+license:             MIT
+license-file:        LICENSE
+author:              Siddharth Krishna
+maintainer:          info@plowtech.net
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/plow-technologies/servant-conctest.git
+
+executable example
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -Wunused-packages -threaded -with-rtsopts=-N
+  build-depends:
+      base
+    -- , containers
+    -- , async
+    -- , hspec
+    , http-client
+    -- , pqc -- NOTE use my fork
+    -- , QuickCheck
+    -- , servant-quickcheck
+    , servant-server
+    , servant-client
+    -- , string-conversions
+    -- , text
+    -- , wai-logger
+    , warp
+  default-language: Haskell2010
