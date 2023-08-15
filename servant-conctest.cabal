@@ -26,8 +26,8 @@ executable example
   build-depends:
       base
     -- , containers
-    -- , async
-    -- , hspec
+    , async
+    , hspec
     , http-client
     -- , pqc -- NOTE use my fork
     -- , QuickCheck
