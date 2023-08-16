@@ -22,6 +22,7 @@ executable example
   main-is: Main.hs
   hs-source-dirs:
       app
+  -- ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -Wunused-packages -O2 -threaded -with-rtsopts=-N
   ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -Wunused-packages -threaded -with-rtsopts=-N
   build-depends:
       base
