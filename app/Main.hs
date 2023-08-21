@@ -19,11 +19,11 @@ import Network.Wai.Handler.Warp (defaultSettings, withApplicationSettings)
 import Servant
 import Servant.Client (BaseUrl (..), ClientM, Scheme (Http), client, mkClientEnv, runClientM)
 import System.Exit (exitFailure)
-import Test.Hspec
 
-type API = "reset" :> Post '[JSON] ()
-  :<|> "get" :> Get '[JSON] Int
-  :<|> "put" :> Post '[JSON] ()
+type API =
+  "reset" :> Post '[JSON] ()
+    :<|> "get" :> Get '[JSON] Int
+    :<|> "put" :> Post '[JSON] ()
 
 api :: Proxy API
 api = Proxy
@@ -104,11 +104,11 @@ withServantServer api server fn = do
   withApplicationSettings defaultSettings (return . serveWithContext api EmptyContext =<< server) $ \port ->
     fn $ BaseUrl Http "localhost" port ""
 
-  -- NOTE: this might avoid the socket not found error, but is MUCH slower:
-  -- let port = 54321
-  -- srv <- server
-  -- withAsync (run port (serveWithContext api EmptyContext srv)) $ \_ -> do
-  --   fn $ BaseUrl Http "localhost" port ""
+-- NOTE: this might avoid the socket not found error, but is MUCH slower:
+-- let port = 54321
+-- srv <- server
+-- withAsync (run port (serveWithContext api EmptyContext srv)) $ \_ -> do
+--   fn $ BaseUrl Http "localhost" port ""
 
 main :: IO ()
 main = do
@@ -120,28 +120,33 @@ main = do
   let putClientFn = show <$> putClient
   let exec :: [[ClientM String]] = [[putClientFn, putClientFn], [getClientFn]]
 
-  -- Generate all sequential interleavings and compute expected results
-  let seqExecs :: [[(Int, ClientM String)]] =
-        -- Add the thread ID to each invocation before interleaving:
-        interleavings $ map (\(t, es) -> zip (repeat t) es) $ zip [0 ..] exec
-  seqResults <- forM seqExecs $ \seqExec -> do
-    -- TODO also use reset here to speed pre-computation if necessary
-    withServantServer api server $ \burl -> do
-      let runFnWithThreadID (t, f) = (t,) <$> f
-      let seqClient = sequence $ map runFnWithThreadID seqExec
-      runClientM seqClient (mkClientEnv manager burl) >>= \case
-        Left err -> error $ "Error computing expected results:\n" ++ show err
-        Right res -> return res
-  -- Gather the results and stringify for easy comparison
-  let stringifyResults results =
-        intercalate "|" $ map (intercalate ",") results
-  let expectedResults = map (stringifyResults . gather) seqResults
-  print expectedResults -- TODO remove
-
-  -- Run concurrently and check results are as expected
   withServantServer api server $ \burl -> do
-    forM_ [1 .. 1000 :: Int] $ \i -> do
-      let clientEnv = mkClientEnv manager burl
+    let clientEnv = mkClientEnv manager burl
+
+    -- Generate all sequential interleavings and compute expected results
+    let seqExecs :: [[(Int, ClientM String)]] =
+          -- Add the thread ID to each invocation before interleaving:
+          interleavings $ map (\(t, es) -> zip (repeat t) es) $ zip [0 ..] exec
+    seqResults <- forM seqExecs $ \seqExec -> do
+      -- Reset server state
+      runClientM resetClient clientEnv >>= \case
+        Left err -> do
+          putStrLn $ "There was an error:\n" ++ show err
+          exitFailure
+        Right () -> do
+          let runFnWithThreadID (t, f) = (t,) <$> f
+          let seqClient = sequence $ map runFnWithThreadID seqExec
+          runClientM seqClient (mkClientEnv manager burl) >>= \case
+            Left err -> error $ "Error computing expected results:\n" ++ show err
+            Right res -> return res
+    -- Gather the results and stringify for easy comparison
+    let stringifyResults results =
+          intercalate "|" $ map (intercalate ",") results
+    let expectedResults = map (stringifyResults . gather) seqResults
+    print expectedResults
+
+    -- Run concurrently and check results are as expected
+    forM_ [1 .. 50000 :: Int] $ \i -> do
       -- Reset server state
       runClientM resetClient clientEnv >>= \case
         Left err -> do
@@ -153,9 +158,15 @@ main = do
             runClientM (sequence threadFns) clientEnv
           case partitionEithers res of
             ([], results) -> do
-              shouldContain expectedResults [stringifyResults results]
-              -- print $ (i, stringifyResults results)
-              -- if length (stringifyResults results) > 1000 then print i else pure ()
+              let resStr = stringifyResults results
+              if elem resStr expectedResults
+                then pure ()
+                else do
+                  print i
+                  putStrLn $ "ERROR: " ++ show expectedResults ++ " does not contain " ++ resStr
+                  exitFailure
+            -- print $ (i, stringifyResults results)
+            -- if length (stringifyResults results) > 1000 then print i else pure ()
             (errs, _) -> do
               print i
               putStrLn $ "There was an error:\n" ++ show errs

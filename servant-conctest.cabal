@@ -28,7 +28,7 @@ executable example
       base
     -- , containers
     , async
-    , hspec
+    -- , hspec
     , http-client
     -- , pqc -- NOTE use my fork
     -- , QuickCheck
