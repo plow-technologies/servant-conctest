@@ -21,7 +21,6 @@ source-repository head
 library
   exposed-modules:
     Servant.ConcTest
-  other-modules:
     Servant.ConcTest.Utils
   hs-source-dirs: src
   build-depends:
@@ -33,6 +32,18 @@ library
     , servant-client
     , warp
   default-language: Haskell2010
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
+
+test-suite servant-conctest-tests
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: Spec.hs
+  build-depends:
+      base >=4.7 && <5
+    , QuickCheck
+    , servant-conctest
+  default-language:    Haskell2010
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
 
 executable example
   main-is: Main.hs

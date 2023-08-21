@@ -1,4 +1,3 @@
-
 module Servant.ConcTest.Utils where
 
 -- | Generate all possible interleavings of the input lists.
@@ -18,8 +17,9 @@ interleavings = go . filter (not . null)
         go' _ [] = []
 
 -- | Convert a list of tuples to a list of lists, using the integers as indexes
--- in the returned list
--- TODO test that gather is the inverse of interleavings
+-- in the returned list.
+-- Example: gather [(2, a), (0, b), (2, c), (1, d), (0, e), (2, f))]
+-- == [[b, e], [d], [a, c, f]]
 gather :: [(Int, a)] -> [[a]]
 gather [] = []
 gather ((i, x) : xs) = insert i x (gather xs)
