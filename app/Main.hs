@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
@@ -14,11 +15,12 @@ import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Either (partitionEithers)
 import Data.List (intercalate)
-import Network.HTTP.Client (defaultManagerSettings, newManager)
+import Network.HTTP.Client (Manager, defaultManagerSettings, newManager)
 import Network.Wai.Handler.Warp (defaultSettings, withApplicationSettings)
 import Servant
 import Servant.Client (BaseUrl (..), ClientM, Scheme (Http), client, mkClientEnv, runClientM)
 import System.Exit (exitFailure)
+import Test.QuickCheck (elements, forAll, ioProperty, quickCheck, vectorOf, verbose)
 
 type API =
   "reset" :> Post '[JSON] ()
@@ -110,65 +112,82 @@ withServantServer api server fn = do
 -- withAsync (run port (serveWithContext api EmptyContext srv)) $ \_ -> do
 --   fn $ BaseUrl Http "localhost" port ""
 
+-- | Checks if every concurrent execution produces the same results as some equivalent
+-- sequential execution.
+isLinearizable :: Manager -> BaseUrl -> [[Method]] -> IO Bool
+isLinearizable manager burl exec = do
+  let clientEnv = mkClientEnv manager burl
+
+  -- Generate all sequential interleavings and compute expected results
+  let seqExecs :: [[(Int, Method)]] =
+        -- Add the thread ID to each invocation before interleaving:
+        interleavings $ map (\(t, es) -> zip (repeat t) es) $ zip [0 ..] exec
+  seqResults <- forM seqExecs $ \seqExec -> do
+    -- Reset server state
+    runClientM resetClient clientEnv >>= \case
+      Left err -> do
+        putStrLn $ "There was an error:\n" ++ show err
+        exitFailure
+      Right () -> do
+        let runFnWithThreadID (t, f) = (t,) <$> clientFn f
+        let seqClient = sequence $ map runFnWithThreadID seqExec
+        runClientM seqClient (mkClientEnv manager burl) >>= \case
+          Left err -> error $ "Error computing expected results:\n" ++ show err
+          Right res -> return res
+  -- Gather the results and stringify for easy comparison
+  let stringifyResults results =
+        intercalate "|" $ map (intercalate ",") results
+  let expectedResults = map (stringifyResults . gather) seqResults
+  print expectedResults
+
+  -- Run concurrently and check results are as expected
+  forM_ [1 .. 500 :: Int] $ \i -> do
+    -- Reset server state
+    runClientM resetClient clientEnv >>= \case
+      Left err -> do
+        putStrLn $ "There was an error:\n" ++ show err
+        exitFailure
+      Right () -> do
+        -- Run test execution concurrently
+        res <- forConcurrently exec $ \threadFns -> do
+          runClientM (sequence $ map clientFn threadFns) clientEnv
+        case partitionEithers res of
+          ([], results) -> do
+            let resStr = stringifyResults results
+            if elem resStr expectedResults
+              then pure ()
+              else do
+                print i
+                putStrLn $ "ERROR: " ++ show expectedResults ++ " does not contain " ++ resStr
+                exitFailure
+          -- print $ (i, stringifyResults results)
+          -- if length (stringifyResults results) > 1000 then print i else pure ()
+          (errs, _) -> do
+            print i
+            putStrLn $ "There was an error:\n" ++ show errs
+            exitFailure
+  pure True
+
+-- | A client API function that stringifies its results, along with a name for debugging.
+data Method = Method {name :: String, clientFn :: ClientM String}
+
+instance Show Method where
+  show (Method {name}) = name
+
 main :: IO ()
 main = do
   -- TODO is it okay to share manager among threads?
   manager <- newManager defaultManagerSettings
 
-  -- Define the concurrent execution to be tested
-  let getClientFn = show <$> getClient
-  let putClientFn = show <$> putClient
-  let exec :: [[ClientM String]] = [[putClientFn, putClientFn], [getClientFn]]
+  -- Define the API to be tested
+  let getClientFn = Method {name = "get", clientFn = show <$> getClient}
+  let putClientFn = Method {name = "put", clientFn = show <$> putClient}
+  let fns = [getClientFn, putClientFn]
+
+  -- Generate concurrent executions to be tested
+  let numThreads = 2
+  let numCalls = 2
+  let execGen = vectorOf numThreads $ vectorOf numCalls $ elements fns
 
   withServantServer api server $ \burl -> do
-    let clientEnv = mkClientEnv manager burl
-
-    -- Generate all sequential interleavings and compute expected results
-    let seqExecs :: [[(Int, ClientM String)]] =
-          -- Add the thread ID to each invocation before interleaving:
-          interleavings $ map (\(t, es) -> zip (repeat t) es) $ zip [0 ..] exec
-    seqResults <- forM seqExecs $ \seqExec -> do
-      -- Reset server state
-      runClientM resetClient clientEnv >>= \case
-        Left err -> do
-          putStrLn $ "There was an error:\n" ++ show err
-          exitFailure
-        Right () -> do
-          let runFnWithThreadID (t, f) = (t,) <$> f
-          let seqClient = sequence $ map runFnWithThreadID seqExec
-          runClientM seqClient (mkClientEnv manager burl) >>= \case
-            Left err -> error $ "Error computing expected results:\n" ++ show err
-            Right res -> return res
-    -- Gather the results and stringify for easy comparison
-    let stringifyResults results =
-          intercalate "|" $ map (intercalate ",") results
-    let expectedResults = map (stringifyResults . gather) seqResults
-    print expectedResults
-
-    -- Run concurrently and check results are as expected
-    forM_ [1 .. 50000 :: Int] $ \i -> do
-      -- Reset server state
-      runClientM resetClient clientEnv >>= \case
-        Left err -> do
-          putStrLn $ "There was an error:\n" ++ show err
-          exitFailure
-        Right () -> do
-          -- Run test execution concurrently
-          res <- forConcurrently exec $ \threadFns -> do
-            runClientM (sequence threadFns) clientEnv
-          case partitionEithers res of
-            ([], results) -> do
-              let resStr = stringifyResults results
-              if elem resStr expectedResults
-                then pure ()
-                else do
-                  print i
-                  putStrLn $ "ERROR: " ++ show expectedResults ++ " does not contain " ++ resStr
-                  exitFailure
-            -- print $ (i, stringifyResults results)
-            -- if length (stringifyResults results) > 1000 then print i else pure ()
-            (errs, _) -> do
-              print i
-              putStrLn $ "There was an error:\n" ++ show errs
-              exitFailure
-      return ()
+    quickCheck $ verbose $ forAll execGen (ioProperty . isLinearizable manager burl)

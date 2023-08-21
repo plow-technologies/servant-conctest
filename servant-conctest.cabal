@@ -31,7 +31,7 @@ executable example
     -- , hspec
     , http-client
     -- , pqc -- NOTE use my fork
-    -- , QuickCheck
+    , QuickCheck
     -- , servant-quickcheck
     , servant-server
     , servant-client
