@@ -7,7 +7,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Main (main) where
+module Example (checkExample) where
 
 import qualified Control.Concurrent.MVar as MVar
 import Control.Monad (when)
@@ -62,8 +62,8 @@ getClient :: ClientM Int
 putClient :: ClientM ()
 resetClient :<|> getClient :<|> putClient = client api
 
-main :: IO ()
-main = do
+checkExample :: IO ()
+checkExample = do
   -- TODO is it okay to share manager among threads?
   manager <- newManager defaultManagerSettings
 
