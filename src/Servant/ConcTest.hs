@@ -45,17 +45,20 @@ instance Show Method where
 
 -- | Checks if every concurrent execution produces the same results as some equivalent
 -- sequential execution.
+-- @reset@ is an API function to reset the state of the server in between tests.
+-- @exec@ is a concurrent execution, specified as a list of API calls for each
+-- thread, thus a [[Method]]
 isLinearizable :: Manager -> BaseUrl -> ClientM () -> [[Method]] -> IO Bool
-isLinearizable manager burl resetClient exec = do
+isLinearizable manager burl reset exec = do
   let clientEnv = mkClientEnv manager burl
 
   -- Generate all sequential interleavings and compute expected results
   let seqExecs :: [[(Int, Method)]] =
-        -- Add the thread ID to each invocation before interleaving:
-        interleavings $ map (\(t, es) -> zip (repeat t) es) $ zip [0 ..] exec
+        -- Add the thread ID `t` to each API call before interleaving:
+        interleavings $ map (\(t, calls) -> zip (repeat t) calls) $ zip [0 ..] exec
   seqResults <- forM seqExecs $ \seqExec -> do
     -- Reset server state
-    runClientM resetClient clientEnv >>= \case
+    runClientM reset clientEnv >>= \case
       Left err -> do
         putStrLn $ "There was an error:\n" ++ show err
         exitFailure
@@ -74,7 +77,7 @@ isLinearizable manager burl resetClient exec = do
   -- Run concurrently and check results are as expected
   forM_ [1 .. 500 :: Int] $ \i -> do
     -- Reset server state
-    runClientM resetClient clientEnv >>= \case
+    runClientM reset clientEnv >>= \case
       Left err -> do
         putStrLn $ "There was an error:\n" ++ show err
         exitFailure
@@ -101,11 +104,10 @@ isLinearizable manager burl resetClient exec = do
 
 withServantServer :: HasServer api '[] => Proxy api -> IO (ServerT api Handler) -> (BaseUrl -> IO a) -> IO a
 withServantServer api server fn = do
+  -- NOTE: this might avoid the socket not found error, but is MUCH slower:
+  -- let port = 54321
+  -- srv <- server
+  -- withAsync (run port (serveWithContext api EmptyContext srv)) $ \_ -> do
+  --   fn $ BaseUrl Http "localhost" port ""
   withApplicationSettings defaultSettings (return . serveWithContext api EmptyContext =<< server) $ \port ->
     fn $ BaseUrl Http "localhost" port ""
-
--- NOTE: this might avoid the socket not found error, but is MUCH slower:
--- let port = 54321
--- srv <- server
--- withAsync (run port (serveWithContext api EmptyContext srv)) $ \_ -> do
---   fn $ BaseUrl Http "localhost" port ""

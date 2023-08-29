@@ -64,7 +64,6 @@ resetClient :<|> getClient :<|> putClient = client api
 
 checkExample :: IO ()
 checkExample = do
-  -- TODO is it okay to share manager among threads?
   manager <- newManager defaultManagerSettings
 
   -- Define the API to be tested

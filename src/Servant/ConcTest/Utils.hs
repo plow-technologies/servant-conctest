@@ -1,6 +1,9 @@
 module Servant.ConcTest.Utils where
 
 -- | Generate all possible interleavings of the input lists.
+-- E.g. @interleavings [[1,2],[3,4]]
+-- == [[1,2,3,4],[1,3,4,2],[1,3,2,4],[3,4,1,2],[3,1,2,4],[3,1,4,2]]
+--
 -- From https://stackoverflow.com/a/41929156
 -- NOTE: is there a more efficient way to do this?
 interleavings :: [[a]] -> [[a]]
