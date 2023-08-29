@@ -19,11 +19,10 @@ module Servant.ConcTest
 where
 
 import Control.Concurrent.Async (forConcurrently)
-import Control.Monad (forM, forM_, when)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad (forM, forM_)
 import Data.Either (partitionEithers)
 import Data.List (intercalate)
-import Network.HTTP.Client (Manager, defaultManagerSettings, newManager)
+import Network.HTTP.Client (Manager)
 import Network.Wai.Handler.Warp (defaultSettings, withApplicationSettings)
 import Servant
   ( Context (EmptyContext),
@@ -32,10 +31,9 @@ import Servant
     Proxy,
     serveWithContext,
   )
-import Servant.Client (BaseUrl (..), ClientM, Scheme (Http), client, mkClientEnv, runClientM)
+import Servant.Client (BaseUrl (..), ClientM, Scheme (Http), mkClientEnv, runClientM)
 import Servant.ConcTest.Utils (gather, interleavings)
 import System.Exit (exitFailure)
-import Test.QuickCheck (elements, forAll, ioProperty, quickCheck, vectorOf, verbose)
 
 -- | A client API function that stringifies its results, along with a name for debugging.
 data Method = Method {name :: String, clientFn :: ClientM String}

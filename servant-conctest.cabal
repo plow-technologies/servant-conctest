@@ -27,7 +27,6 @@ library
       base
     , async
     , http-client
-    , QuickCheck
     , servant-server
     , servant-client
     , warp
